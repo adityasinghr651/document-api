@@ -1,26 +1,36 @@
+// -------------------- Gemini Setup --------------------
 const { VertexAI } = require('@google-cloud/vertexai');
 const projectId = 'your-google-cloud-project-id'; // Replace with your project ID
 const location = 'us-central1'; // Or your preferred region
 const vertexAI = new VertexAI({ project: projectId, location: location });
-const generativeModel = vertexAI.getGenerativeModel({ model: 'gemini-1.5-flash' }); // Use Gemini model
+const generativeModel = vertexAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-
-
-
-
+// -------------------- Express Setup --------------------
 const express = require('express');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const rateLimit = require('express-rate-limit');
+const axios = require("axios");   // ✅ sirf ek jagah import
+
 const app = express();
 const port = 3000;
 
-// Multer for in-memory file handling (secure, no disk storage)
+app.use(express.json());
+
+// Multer for in-memory file handling
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-app.use(express.json());
+// Rate limiter
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+app.use('/qa', limiter);
 
-// Q&A Endpoint
+// -------------------- Root Route --------------------
+app.get("/", (req, res) => {
+  res.send("✅ Server is working! 🚀");
+});
+
+// -------------------- Q&A Endpoint --------------------
 app.post('/qa', upload.single('pdf'), async (req, res) => {
     try {
         // Extract text from PDF (if provided) or use body text
@@ -34,7 +44,7 @@ app.post('/qa', upload.single('pdf'), async (req, res) => {
             return res.status(400).json({ error: 'No text or PDF provided' });
         }
 
-        // Get question from request body
+        // Get question
         const question = req.body.question;
         if (!question) {
             return res.status(400).json({ error: 'No question provided' });
@@ -45,7 +55,7 @@ app.post('/qa', upload.single('pdf'), async (req, res) => {
         const response = await generativeModel.generateContent(prompt);
         const answer = response.response.candidates[0].content.parts[0].text;
 
-        // Return clean JSON response
+        // Send response
         res.json({
             success: true,
             question: question,
@@ -57,14 +67,25 @@ app.post('/qa', upload.single('pdf'), async (req, res) => {
     }
 });
 
-// Start server
-app.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}`);
+// -------------------- Python API Endpoint --------------------
+app.post("/use-python", async (req, res) => {
+  try {
+    const { text } = req.body;
+
+    // Send request to Python backend (FastAPI)
+    const response = await axios.post("http://127.0.0.1:8000/process", { text });
+
+    res.json({
+      success: true,
+      pythonResponse: response.data
+    });
+  } catch (err) {
+    console.error("Python API Error:", err.message);
+    res.status(500).json({ error: "Python backend error" });
+  }
 });
 
-
-
-
-const rateLimit = require('express-rate-limit');
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
-app.use('/qa', limiter);
+// -------------------- Start Server --------------------
+app.listen(port, () => {
+    console.log(`✅ Server running at http://localhost:${port}`);
+});
